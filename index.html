@@ -172,8 +172,23 @@
     }
 
     .popup-name {
+      font-size: 1.6em;
       font-weight: 700;
-      margin-bottom: 6px;
+      line-height: 1.15;
+      margin: 0 0 6px;
+    }
+
+    .popup-notes {
+      margin-top: 6px;
+    }
+
+    .popup-note {
+      margin: 0 0 8px;
+      line-height: 1.35;
+    }
+
+    .popup-note:last-child {
+      margin-bottom: 0;
     }
 
     .leaflet-control-location {
@@ -223,18 +238,21 @@
       }
 
       aside {
+        order: 2;
         flex: 0 0 auto;
         max-height: 45%;
         overflow: hidden;
         border-radius: 0;
-        border-top: none;
+        border-top: 1px solid var(--border);
         border-left: none;
         border-right: none;
+        border-bottom: none;
         box-shadow: none;
         padding: 14px;
       }
 
       main {
+        order: 1;
         flex: 1 1 auto;
         min-height: 0;
         border-radius: 0;
@@ -359,7 +377,7 @@
 
     const zoneStyles = {
       "1.2": { color: "#1976d2", weight: 10, opacity: 0.82 },
-      "Б.1": { color: "#2e7d32", weight: 9, opacity: 0.82 },
+      "Б.1": { color: "#1976d2", weight: 10, opacity: 0.82 },
     };
 
     const streetListEl = document.getElementById("streetList");
@@ -382,17 +400,22 @@
     const layer12 = L.featureGroup().addTo(map);
     const layerB1 = L.featureGroup().addTo(map);
     const streetPolylines = [];
-    let selectedStreetId = null;
+    const selectedStreetIds = new Set();
+    let selectedListStreetId = null;
     let userLocationDot = null;
     let userAccuracyCircle = null;
 
     const streetBoundsById = new Map();
 
-    const showLocationError = (message) => {
+    const showMapMessage = (message) => {
       L.popup({ autoClose: true, closeButton: true, maxWidth: 260 })
         .setLatLng(map.getCenter())
         .setContent(message)
         .openOn(map);
+    };
+
+    const showLocationError = (message) => {
+      showMapMessage(message);
     };
 
     const updateUserLocation = (latlng, accuracy) => {
@@ -467,7 +490,7 @@
       button.type = "button";
       button.setAttribute("aria-label", "Location");
       button.innerHTML =
-        '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 2h2v3.06A7.002 7.002 0 0 1 18.94 11H22v2h-3.06A7.002 7.002 0 0 1 13 18.94V22h-2v-3.06A7.002 7.002 0 0 1 5.06 13H2v-2h3.06A7.002 7.002 0 0 1 11 5.06V2Zm1 5a5 5 0 1 0 0 10 5 5 0 0 0 0-10Zm0 3a2 2 0 1 1 0 4 2 2 0 0 1 0-4Z"/></svg><span>Location</span>';
+        '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 2h2v3.06A7.002 7.002 0 0 1 18.94 11H22v2h-3.06A7.002 7.002 0 0 1 13 18.94V22h-2v-3.06A7.002 7.002 0 0 1 5.06 13H2v-2h3.06A7.002 7.002 0 0 1 11 5.06V2Zm1 5a5 5 0 1 0 0 10 5 5 0 0 0 0-10Zm0 3a2 2 0 1 1 0 4 2 2 0 0 1 0-4Z"/></svg>';
 
       L.DomEvent.disableClickPropagation(container);
       L.DomEvent.disableScrollPropagation(container);
@@ -505,6 +528,13 @@
       return key.replace(/[^a-z0-9\u0400-\u04ff]+/g, "");
     };
 
+    const streetNameKeyVariants = (value) => {
+      const source = (value || "").toLowerCase();
+      const variants = new Set([source]);
+      variants.add(source.replace(/bulevar/g, "bul").replace(/булевар/g, "бул"));
+      return [...variants].map((item) => normalizeKey(item)).filter(Boolean);
+    };
+
     const parseStreetData = (raw) => {
       const rows = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
       return rows
@@ -533,12 +563,14 @@
       const noteSet = new Set((notes || []).filter(Boolean));
       const noteBlock =
         noteSet.size > 0
-          ? `<div><strong>Участок:</strong><br>${[...noteSet].join("<br>")}</div>`
+          ? `<div class="popup-notes">${[...noteSet]
+              .map((note) => `<p class="popup-note">${note}</p>`)
+              .join("")}</div>`
           : "";
 
       return `
-        <div class="popup-name">${name || "Без названия"}</div>
-        <div><strong>Категория:</strong> ${zone}</div>
+        <h1 class="popup-name">${name || "Без названия"}</h1>
+        <div><strong>Зона:</strong> ${zone}</div>
         ${noteBlock}
       `;
     };
@@ -552,6 +584,25 @@
         normalizeKey(street.note),
       ].join("|"),
     }));
+    const streetsById = new Map(streets.map((street) => [street.id, street]));
+    const streetIdsByNameKey = new Map();
+    const getStreetNameKeys = (street) => {
+      const keys = new Set();
+      for (const name of [street?.nameCyr, street?.nameLat]) {
+        for (const key of streetNameKeyVariants(name)) {
+          keys.add(key);
+        }
+      }
+      return [...keys];
+    };
+    for (const street of streets) {
+      for (const key of getStreetNameKeys(street)) {
+        if (!streetIdsByNameKey.has(key)) {
+          streetIdsByNameKey.set(key, new Set());
+        }
+        streetIdsByNameKey.get(key).add(street.id);
+      }
+    }
 
     const normalizeStoredPayload = (parsed) => {
       if (!parsed || !Array.isArray(parsed.segments12) || !Array.isArray(parsed.segmentsB1)) {
@@ -583,12 +634,10 @@
 
       streetListEl.innerHTML = filtered
         .map((street) => {
-          const isBlue = street.zone === "1.2";
-          const isSelected = selectedStreetId === street.id;
+          const isSelected = selectedListStreetId === street.id;
           return `
             <li class="street-item${isSelected ? " selected" : ""}" data-street-id="${street.id}">
               <div class="street-head">
-                <span class="pill ${isBlue ? "blue" : "green"}">${street.zone}</span>
                 <p class="street-cyr">${street.nameCyr}</p>
               </div>
               <p class="street-lat">${street.nameLat}</p>
@@ -599,9 +648,9 @@
         .join("");
     };
 
-    const streetIdsContain = (streetIds, streetId) => {
+    const streetIdsContainSelection = (streetIds) => {
       if (!Array.isArray(streetIds)) return false;
-      return streetIds.some((id) => Number(id) === streetId);
+      return streetIds.some((id) => selectedStreetIds.has(Number(id)));
     };
 
     const applySelectedStreetStyle = () => {
@@ -609,8 +658,7 @@
         const baseStyle = zoneStyles[item.zone];
         if (!baseStyle) continue;
 
-        const isSelected =
-          selectedStreetId !== null && streetIdsContain(item.streetIds, selectedStreetId);
+        const isSelected = streetIdsContainSelection(item.streetIds);
 
         item.polyline.setStyle({
           color: isSelected ? "#e53935" : baseStyle.color,
@@ -620,12 +668,90 @@
       }
     };
 
-    const selectStreet = (streetId) => {
-      selectedStreetId = streetId;
+    const findPopupPolylineForStreet = (streetId) => {
+      const byStreetId = streetPolylines.find((item) => {
+        if (!Array.isArray(item.streetIds)) return false;
+        return item.streetIds.some((id) => Number(id) === Number(streetId));
+      });
+      if (byStreetId) {
+        return byStreetId.polyline;
+      }
+
+      const bySelection = streetPolylines.find((item) => streetIdsContainSelection(item.streetIds));
+      return bySelection ? bySelection.polyline : null;
+    };
+
+    const openPopupForStreetSelection = (streetId) => {
+      const polyline = findPopupPolylineForStreet(streetId);
+      if (!polyline) {
+        return false;
+      }
+      polyline.openPopup();
+      return true;
+    };
+
+    const scrollStreetListToItem = (streetId) => {
+      const streetItem = streetListEl.querySelector(`.street-item[data-street-id="${streetId}"]`);
+      if (streetItem) {
+        streetItem.scrollIntoView({ block: "nearest" });
+      }
+    };
+
+    const getSelectionStreetIds = (listStreetId) => {
+      const street = streetsById.get(listStreetId);
+      if (!street) {
+        return [listStreetId];
+      }
+
+      const candidateIds = new Set();
+      for (const key of getStreetNameKeys(street)) {
+        for (const id of streetIdsByNameKey.get(key) || []) {
+          candidateIds.add(id);
+        }
+      }
+      if (candidateIds.size === 0) {
+        candidateIds.add(listStreetId);
+      }
+
+      const withGeometry = [...candidateIds].filter((id) => streetBoundsById.has(id));
+      return withGeometry.length > 0 ? withGeometry : [...candidateIds];
+    };
+
+    const resolveSegmentStreetId = (segment) => {
+      const segmentStreetIds = (segment?.streetIds || [])
+        .map((value) => Number(value))
+        .filter((value) => Number.isFinite(value));
+      const existingId = segmentStreetIds.find((id) => streetsById.has(id));
+      if (Number.isFinite(existingId)) {
+        return existingId;
+      }
+
+      for (const key of streetNameKeyVariants(segment?.name || "")) {
+        const ids = streetIdsByNameKey.get(key);
+        if (ids && ids.size > 0) {
+          return [...ids][0];
+        }
+      }
+      return null;
+    };
+
+    const selectStreet = (streetId, options = {}) => {
+      if (!Number.isFinite(streetId)) {
+        return;
+      }
+      selectedListStreetId = streetId;
+      const idsToSelect = getSelectionStreetIds(streetId);
+      selectedStreetIds.clear();
+      for (const id of idsToSelect) {
+        selectedStreetIds.add(Number(id));
+      }
       applySelectedStreetStyle();
       const items = streetListEl.querySelectorAll(".street-item");
       for (const item of items) {
-        item.classList.toggle("selected", Number(item.dataset.streetId) === streetId);
+        item.classList.toggle("selected", Number(item.dataset.streetId) === selectedListStreetId);
+      }
+      if (options.scrollList) {
+        scrollStreetListToItem(selectedListStreetId);
       }
     };
 
@@ -636,10 +762,25 @@
 
         const streetId = Number(item.dataset.streetId);
         selectStreet(streetId);
-        const bounds = streetBoundsById.get(streetId);
+        const bounds = L.latLngBounds([]);
+        for (const id of selectedStreetIds) {
+          const segmentBounds = streetBoundsById.get(id);
+          if (segmentBounds && segmentBounds.isValid()) {
+            bounds.extend(segmentBounds);
+          }
+        }
 
         if (bounds && bounds.isValid()) {
+          let popupOpened = false;
+          const tryOpenPopup = () => {
+            if (popupOpened) return;
+            popupOpened = openPopupForStreetSelection(streetId);
+          };
+          map.once("moveend", tryOpenPopup);
           map.fitBounds(bounds.pad(0.24), { maxZoom: 19, animate: true });
+          window.setTimeout(tryOpenPopup, 260);
+        } else {
+          showMapMessage("Для выбранной улицы нет офлайн-геометрии.");
         }
       });
 
@@ -678,6 +819,12 @@
       });
 
       polyline.bindPopup(popupHtml(segment.name, segment.zone, segment.notes));
+      polyline.on("click", () => {
+        const streetId = resolveSegmentStreetId(segment);
+        if (streetId !== null) {
+          selectStreet(streetId, { scrollList: true });
+        }
+      });
 
       const segmentBounds = polyline.getBounds();
       for (const streetId of segment.streetIds || []) {
