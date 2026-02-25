@@ -1,0 +1,665 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Free Parking</title>
+  <link rel="stylesheet" href="./vendor/leaflet/leaflet.css" />
+  <style>
+    :root {
+      --bg: #f3f6f7;
+      --panel-bg: #ffffff;
+      --text: #1a2328;
+      --muted: #5a6b73;
+      --blue: #1976d2;
+      --green: #2e7d32;
+      --border: #d8e0e4;
+      --shadow: 0 10px 28px rgba(8, 26, 43, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      height: 100%;
+      font-family: "Manrope", "Segoe UI", sans-serif;
+      color: var(--text);
+      background: radial-gradient(circle at 18% 10%, #e3f1f5 0, #f3f6f7 42%, #edf3ef 100%);
+    }
+
+    .app {
+      display: grid;
+      grid-template-columns: 380px minmax(0, 1fr);
+      height: 100%;
+      gap: 14px;
+      padding: 14px;
+    }
+
+    aside {
+      background: var(--panel-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    h1 {
+      font-size: 1.2rem;
+      margin: 0;
+      line-height: 1.28;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    input[type="search"] {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 0.92rem;
+      outline: none;
+      background: #fff;
+    }
+
+    input[type="search"]:focus {
+      border-color: #7da5be;
+      box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.12);
+    }
+
+    .street-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      overflow: auto;
+      border-top: 1px solid var(--border);
+      min-height: 0;
+    }
+
+    .street-item {
+      border-bottom: 1px solid #edf2f4;
+      padding: 10px 0;
+      cursor: pointer;
+    }
+
+    .street-item:last-child {
+      border-bottom: none;
+    }
+
+    .street-item:hover .street-lat {
+      color: #0f4468;
+    }
+
+    .street-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 3px;
+    }
+
+    .pill {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      border-radius: 999px;
+      padding: 2px 8px;
+      color: #fff;
+    }
+
+    .pill.blue {
+      background: var(--blue);
+    }
+
+    .pill.green {
+      background: var(--green);
+    }
+
+    .street-cyr {
+      font-size: 0.88rem;
+      line-height: 1.3;
+      margin: 0;
+    }
+
+    .street-lat {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin: 2px 0 0;
+      line-height: 1.3;
+      transition: color 0.15s;
+    }
+
+    .street-note {
+      margin-top: 4px;
+      font-size: 0.78rem;
+      color: #2a4f64;
+      line-height: 1.35;
+    }
+
+    main {
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      min-height: 0;
+    }
+
+    #map {
+      width: 100%;
+      height: 100%;
+      min-height: 520px;
+      background: #dfe7ea;
+    }
+
+    .leaflet-popup-content {
+      margin: 10px 12px;
+      font-size: 0.88rem;
+      line-height: 1.35;
+    }
+
+    .popup-name {
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .leaflet-control-location {
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .location-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: none;
+      background: #ffffff;
+      color: #1d4259;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 8px 10px;
+      cursor: pointer;
+    }
+
+    .location-btn:hover {
+      background: #f0f6fa;
+    }
+
+    .location-btn svg {
+      width: 14px;
+      height: 14px;
+      fill: #1976d2;
+      display: block;
+    }
+
+    @media (max-width: 980px) {
+      .app {
+        grid-template-columns: 1fr;
+        grid-template-rows: minmax(320px, 48vh) minmax(0, 1fr);
+      }
+
+      aside {
+        order: 2;
+      }
+
+      main {
+        order: 1;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside>
+      <h1>Free Parking</h1>
+      <div class="controls">
+        <input id="streetFilter" type="search" placeholder="Поиск по названию улицы" />
+      </div>
+      <ul class="street-list" id="streetList"></ul>
+    </aside>
+    <main>
+      <div id="map"></div>
+    </main>
+  </div>
+
+  <script src="./vendor/leaflet/leaflet.js"></script>
+  <script src="./data/belgrade-streets-offline.js"></script>
+  <script>
+    const rawStreetData = `
+1,БУЛЕВАР ДЕСПОТА СТЕФАНА,BULEVAR DESPOTA STEFANA,1.2,"19–41, 28–50А од Цетињске до Џорџа Вашингтона"
+2,ЦАРА ДУШАНА,CARA DUŠANA,1.2,
+3,ЦАРА УРОША,CARA UROŠA,1.2,21–35А; 26–42А од Господар Јевремове до Цара Душана
+4,ЦЕТИЊСКА,CETINjSKA,1.2,11–17; 14–32 од Зетске до Цара Душана
+5,ДОБРАЧИНА,DOBRAČINA,1.2,15А–43; 18–50 од Симине до Цара Душана
+6,ДОСИТЕЈЕВА,DOSITEJEVA,1.2,6–32; 11–37 од Симине до Цара Душана
+7,ЏОРЏА ВАШИНГТОНА,DžORDžA VAŠINGTONA,1.2,
+8,ФРАНЦУСКА,FRANCUSKA,1.2,9–37А; 6–32А од Симине до Цара Душана
+9,ГЕНЕРАЛА ЛЕШЈАНИНА,GENERALA LEŠJANINA,1.2,
+10,ГОСПОДАР ЈЕВРЕМОВА,GOSPODAR JEVREMOVA,1.2,23–65; 24–56 од Вишњићеве до Скадарске
+11,ГОСПОДАР ЈОВАНОВА,GOSPODAR JOVANOVA,1.2,
+12,ХИЛАНДАРСКА,HILANDARSKA,1.2,
+13,ЈЕЛЕНЕ ЋЕТКОВИЋ,JELENE ĆETKOVIĆ,1.2,
+14,КАПЕТАН МИШИНА,KAPETAN MIŠINA,1.2,1–23А; 2–22 од Симине до Цара Душана
+15,КНЕГИЊЕ ЉУБИЦЕ,KNEGINjE LjUBICE,1.2,14–30; 7–27 од Симине до Цара Душана
+16,КОНДИНА,KONDINA,1.2,
+17,КОПИТАРЕВА ГРАДИНА,KOPITAREVA GRADINA,1.2,
+18,КОСТЕ СТОЈАНОВИЋА,KOSTE STOJANOVIĆA,1.2,
+19,КРАЉА ПЕТРА,KRALjA PETRA,1.2,75–93; 64–82 од Цара Душана до Господар Јевремове
+20,МАЈКЕ ЈЕВРОСИМЕ,MAJKE JEVROSIME,1.2,
+21,МИЛУТИНА БОЈИЋА,MILUTINA BOJIĆA,1.2,
+22,НУШИЋЕВА,NUŠIĆEVA,1.2,15–27; 14–22 од Косовске до Трга Политика
+23,ПАЛМОТИЋЕВА,PALMOTIĆEVA,1.2,1–33; 2–20 од Косовске до Џорџа Вашингтона
+24,РИГЕ ОД ФЕРЕ,RIGE OD FERE,1.2,
+25,СКАДАРСКА,SKADARSKA,1.2,13–45; 26–40 од Зетске до Цара Душана
+26,СТЕВАНА СРЕМЦА,STEVANA SREMCA,1.2,
+27,СТРАХИЊИЋА БАНА,STRAHINjIĆA BANA,1.2,
+28,СВЕТОГОРСКА,SVETOGORSKA,1.2,
+29,ШАФАРИКОВА,ŠAFARIKOVA,1.2,
+30,ТАДЕУША КОШЋУШКА,TADEUŠA KOŠĆUŠKA,1.2,26–42А од Господар Јевремове до Цара Душана
+31,ПЈАРОНА ДЕ МОНДЕЗИРА,PJARONA DE MONDEZIRA,1.2,26–42А
+32,ВИШЊИЋЕВА,VIŠNjIĆEVA,1.2,9–21; 4–18 од Господар Јевремове до Цара Душана
+33,ВЛАЈКОВИЋЕВА,VLAJKOVIĆEVA,1.2,13–31; 4–32 од Косовске до Хиландарске
+34,ЂУРЕ ДАНИЧИЋА,ĐURE DANIČIĆA,1.2,
+35,ШАНТИЋЕВА,ŠANTIĆEVA,1.2,
+36,БРАЋЕ БАРУХ,BRAĆE BARUH,1.2,
+37,БУДИМСКА,BUDIMSKA,Б.1,
+38,БУЛ. ДЕСПОТА СТЕФАНА,BUL. DESPOTA STEFANA,Б.1,43–95; 52–68Б и 92 од Џорџа Вашингтона до Цвијићеве
+39,БУЛЕВАР ВОЈВОДЕ БОЈОВИЋА,BULEVAR VOJVODE BOJOVIĆA,Б.1,"2–14, 9"
+40,ЦАРА УРОША,CARA UROŠA,Б.1,37–73; 48–68 од Дунавске до Цара Душана
+41,ЦАРИГРАДСКА,CARIGRADSKA,Б.1,
+42,ЦВИЈИЋЕВА,CVIJIĆEVA,Б.1,1–5; 18–24 од Бул. деспота Стефана до Венизелосове
+43,ДЕСПОТА ЂУРЂА,DESPOTA ĐURĐA,Б.1,
+44,ДОБРАЧИНА,DOBRAČINA,Б.1,45–73; 52–76 од Цара Душана до Дунавске
+45,ДОСИТЕЈЕВА,DOSITEJEVA,Б.1,39–57А; 34–48 од Сењанина Иве до Цара Душана
+46,ДРАЧКА,DRAČKA,Б.1,
+47,ДРИНЧИЋЕВА,DRINČIĆEVA,Б.1,
+48,ДУБРОВАЧКА,DUBROVAČKA,Б.1,
+49,ДУНАВСКА,DUNAVSKA,Б.1,1–27; 2–70 од Тадеуша Кошћушка до Светозара Милетића
+50,ГУНДУЛИЋЕВ ВЕНАЦ,GUNDULIĆEV VENAC,Б.1,
+51,ХЕРЦЕГ СТЈЕПАНА,HERCEG STJEPANA,Б.1,
+52,ЈЕЛИСАВЕТЕ НАЧИЋ,JELISAVETE NAČIĆ,Б.1,
+53,ЈЕВРЕЈСКА,JEVREJSKA,Б.1,
+54,КАПЕТАН МИШИНА,KAPETAN MIŠINA,Б.1,25–49; 26–34 од Цара Душана до Високог Стевана
+55,КНЕГИЊЕ ЉУБИЦЕ,KNEGINjE LjUBICE,Б.1,32–34; 29 од Цара Душана до Скендер Бегове
+56,КНЕЗ МИЛЕТИНА,KNEZ MILETINA,Б.1,
+57,КНИЋАНИНОВА,KNIĆANINOVA,Б.1,
+58,КОМНЕН БАРЈАКТАРА,KOMNEN BARJAKTARA,Б.1,
+59,МИТЕ ПОПОВИЋА,MITE POPOVIĆA,Б.1,
+60,МИХИЗОВА,MIHIZOVA,Б.1,
+61,МИКЕ АЛАСА,MIKE ALASA,Б.1,
+62,МИЛОРАДА ГАВРИЛОВИЋА,MILORADA GAVRILOVIĆA,Б.1,
+63,ПАНЧЕВАЧКА,PANČEVAČKA,Б.1,
+64,ПАНЧИЋЕВА,PANČIĆEVA,Б.1,
+65,ПОЕНКАРЕОВА,POENKAREOVA,Б.1,1; 2–6
+66,СЕЊАНИНА ИВЕ,SENjANINA IVE,Б.1,
+67,СИБИЊАНИНА ЈАНКА,SIBINjANINA JANKA,Б.1,
+68,СКАДАРСКА,SKADARSKA,Б.1,47–55; 42 од Ђорђа Јовановића до Џорџа Вашингтона
+69,СКЕНДЕР БЕГОВА,SKENDER BEGOVA,Б.1,
+70,СОЛУНСКА,SOLUNSKA,Б.1,
+71,СВЕТОЗАРА МИЛЕТИЋА,SVETOZARA MILETIĆA,Б.1,
+72,ШАЈКАШКА,ŠAJKAŠKA,Б.1,
+73,ТАДЕУША КОШЋУШКА,TADEUŠA KOŠĆUŠKA,Б.1,1–9; 48–64 од Цара Душана до Дунавске
+74,ВАТРОСЛАВА ЛИСИНСКОГ,VATROSLAVA LISINSKOG,Б.1,1–7; 2–10 од В. Добрића до Цвијићеве – стари назив улице
+75,БОГДАНА ТИРНАНИЋА,BOGDANA TIRNANIĆA,Б.1,бивша Ватрослава Лисинског (1–7; 2–10)
+76,ВЕНИЗЕЛОСОВА,VENIZELOSOVA,Б.1,1–33; 2–62
+77,ВИСОКОГ СТЕВАНА,VISOKOG STEVANA,Б.1,
+78,ВОЈВОДЕ ДОБРЊЦА,VOJVODE DOBRNjCA,Б.1,3–25; 24–52 од Бул. деспота Стефана до Венизелосове
+79,ЖОРЖА КЛЕМЕНСОА,ŽORŽA KLEMENSOA,Б.1,
+80,ЂОРЂА ЈОВАНОВИЋА,ĐORĐA JOVANOVIĆA,Б.1,
+`.trim();
+
+    const zoneStyles = {
+      "1.2": { color: "#1976d2", weight: 10, opacity: 0.82 },
+      "Б.1": { color: "#2e7d32", weight: 9, opacity: 0.82 },
+    };
+
+    const streetListEl = document.getElementById("streetList");
+    const streetFilterEl = document.getElementById("streetFilter");
+
+    const map = L.map("map", {
+      zoomControl: true,
+      preferCanvas: true,
+    }).setView([44.8178, 20.4633], 15);
+
+    L.tileLayer("./tiles/{z}/{x}/{y}.png", {
+      minZoom: 15,
+      maxZoom: 19,
+      maxNativeZoom: 19,
+      attribution: "Offline OSM tiles",
+      errorTileUrl:
+        "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=",
+    }).addTo(map);
+
+    const layer12 = L.featureGroup().addTo(map);
+    const layerB1 = L.featureGroup().addTo(map);
+    let userLocationDot = null;
+    let userAccuracyCircle = null;
+
+    const streetBoundsById = new Map();
+
+    const showLocationError = (message) => {
+      L.popup({ autoClose: true, closeButton: true, maxWidth: 260 })
+        .setLatLng(map.getCenter())
+        .setContent(message)
+        .openOn(map);
+    };
+
+    const updateUserLocation = (latlng, accuracy) => {
+      if (userLocationDot) {
+        map.removeLayer(userLocationDot);
+      }
+      if (userAccuracyCircle) {
+        map.removeLayer(userAccuracyCircle);
+      }
+
+      userLocationDot = L.circleMarker(latlng, {
+        radius: 7,
+        color: "#ffffff",
+        weight: 2,
+        fillColor: "#1976d2",
+        fillOpacity: 1,
+      }).addTo(map);
+
+      userAccuracyCircle = L.circle(latlng, {
+        radius: accuracy || 0,
+        color: "#1976d2",
+        weight: 1,
+        fillColor: "#1976d2",
+        fillOpacity: 0.12,
+      }).addTo(map);
+
+      userLocationDot.bindPopup("Текущая геолокация").openPopup();
+    };
+
+    const requestCurrentLocation = () => {
+      const isLocalhost =
+        window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+      if (!window.isSecureContext && !isLocalhost) {
+        showLocationError("Геолокация доступна только по HTTPS или на localhost.");
+        return;
+      }
+
+      if (!("geolocation" in navigator)) {
+        showLocationError("Геолокация не поддерживается в этом браузере.");
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const latlng = [position.coords.latitude, position.coords.longitude];
+          const accuracy = position.coords.accuracy || 0;
+          updateUserLocation(latlng, accuracy);
+          map.setView(latlng, 18, { animate: true });
+        },
+        (error) => {
+          const message =
+            error?.code === 1
+              ? "Доступ к геолокации запрещен."
+              : "Не удалось определить текущее местоположение.";
+          showLocationError(message);
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 0,
+        }
+      );
+    };
+
+    const locationControl = L.control({ position: "bottomright" });
+    locationControl.onAdd = () => {
+      const container = L.DomUtil.create(
+        "div",
+        "leaflet-bar leaflet-control leaflet-control-location"
+      );
+      const button = L.DomUtil.create("button", "location-btn", container);
+      button.type = "button";
+      button.setAttribute("aria-label", "Location");
+      button.innerHTML =
+        '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 2h2v3.06A7.002 7.002 0 0 1 18.94 11H22v2h-3.06A7.002 7.002 0 0 1 13 18.94V22h-2v-3.06A7.002 7.002 0 0 1 5.06 13H2v-2h3.06A7.002 7.002 0 0 1 11 5.06V2Zm1 5a5 5 0 1 0 0 10 5 5 0 0 0 0-10Zm0 3a2 2 0 1 1 0 4 2 2 0 0 1 0-4Z"/></svg><span>Location</span>';
+
+      L.DomEvent.disableClickPropagation(container);
+      L.DomEvent.disableScrollPropagation(container);
+      L.DomEvent.on(button, "click", (event) => {
+        L.DomEvent.stop(event);
+        requestCurrentLocation();
+      });
+
+      return container;
+    };
+    locationControl.addTo(map);
+
+    const normalizeKey = (value) => {
+      let key = (value || "")
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+      key = key
+        .replace(/đ/g, "dj")
+        .replace(/џ/g, "dz")
+        .replace(/љ/g, "lj")
+        .replace(/њ/g, "nj")
+        .replace(/ћ/g, "c")
+        .replace(/č/g, "c")
+        .replace(/ž/g, "z")
+        .replace(/š/g, "s");
+      return key.replace(/[^a-z0-9\u0400-\u04ff]+/g, "");
+    };
+
+    const parseStreetData = (raw) => {
+      const rows = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+      return rows
+        .map((line) => {
+          const match = line.match(/^(\d+),([^,]+),([^,]+),([^,]+),(.*)$/);
+          if (!match) {
+            return null;
+          }
+
+          const [, id, nameCyr, nameLat, zoneRaw, noteRaw] = match;
+          const zone = zoneRaw.trim();
+          const note = noteRaw.trim().replace(/^"(.*)"$/, "$1");
+
+          return {
+            id: Number(id),
+            nameCyr: nameCyr.trim(),
+            nameLat: nameLat.trim(),
+            zone,
+            note,
+          };
+        })
+        .filter(Boolean);
+    };
+
+    const popupHtml = (name, zone, notes) => {
+      const noteSet = new Set((notes || []).filter(Boolean));
+      const noteBlock =
+        noteSet.size > 0
+          ? `<div><strong>Участок:</strong><br>${[...noteSet].join("<br>")}</div>`
+          : "";
+
+      return `
+        <div class="popup-name">${name || "Без названия"}</div>
+        <div><strong>Категория:</strong> ${zone}</div>
+        ${noteBlock}
+      `;
+    };
+
+    const streets = parseStreetData(rawStreetData);
+    const searchableStreets = streets.map((street) => ({
+      ...street,
+      searchKey: [
+        normalizeKey(street.nameCyr),
+        normalizeKey(street.nameLat),
+        normalizeKey(street.note),
+      ].join("|"),
+    }));
+
+    const normalizeStoredPayload = (parsed) => {
+      if (!parsed || !Array.isArray(parsed.segments12) || !Array.isArray(parsed.segmentsB1)) {
+        return null;
+      }
+
+      if (parsed.segments12.length + parsed.segmentsB1.length === 0) {
+        return null;
+      }
+
+      return {
+        segments12: parsed.segments12,
+        segmentsB1: parsed.segmentsB1,
+        found12: new Set(parsed.found12 || []),
+        foundB1: new Set(parsed.foundB1 || []),
+        zone12Added: parsed.segments12.length,
+        zoneB1Added: parsed.segmentsB1.length,
+        bboxLabel: parsed.bboxLabel || "offline",
+        savedAt: parsed.savedAt || null,
+        source: parsed.source || "offline",
+      };
+    };
+
+    const renderStreetList = (filterText = "") => {
+      const needle = normalizeKey(filterText);
+      const filtered = needle
+        ? searchableStreets.filter((street) => street.searchKey.includes(needle))
+        : searchableStreets;
+
+      streetListEl.innerHTML = filtered
+        .map((street) => {
+          const isBlue = street.zone === "1.2";
+          return `
+            <li class="street-item" data-street-id="${street.id}">
+              <div class="street-head">
+                <span class="pill ${isBlue ? "blue" : "green"}">${street.zone}</span>
+                <p class="street-cyr">${street.nameCyr}</p>
+              </div>
+              <p class="street-lat">${street.nameLat}</p>
+              ${street.note ? `<div class="street-note">${street.note}</div>` : ""}
+            </li>
+          `;
+        })
+        .join("");
+    };
+
+    const bindListEvents = () => {
+      streetListEl.addEventListener("click", (event) => {
+        const item = event.target.closest(".street-item");
+        if (!item) return;
+
+        const streetId = Number(item.dataset.streetId);
+        const bounds = streetBoundsById.get(streetId);
+
+        if (bounds && bounds.isValid()) {
+          map.fitBounds(bounds.pad(0.24), { maxZoom: 19, animate: true });
+        }
+      });
+
+      streetFilterEl.addEventListener("input", (event) => {
+        renderStreetList(event.target.value || "");
+      });
+    };
+
+    const renderSegment = (segment, zoneLayer) => {
+      if (!Array.isArray(segment?.latLngs) || segment.latLngs.length < 2) {
+        return false;
+      }
+
+      const style = zoneStyles[segment.zone];
+      if (!style) return false;
+
+      L.polyline(segment.latLngs, {
+        color: "#ffffff",
+        weight: style.weight + 4,
+        opacity: 0.82,
+        lineJoin: "round",
+        lineCap: "round",
+      }).addTo(zoneLayer);
+
+      const polyline = L.polyline(segment.latLngs, {
+        color: style.color,
+        weight: style.weight,
+        opacity: style.opacity,
+        lineJoin: "round",
+        lineCap: "round",
+      }).addTo(zoneLayer);
+
+      polyline.bindPopup(popupHtml(segment.name, segment.zone, segment.notes));
+
+      const segmentBounds = polyline.getBounds();
+      for (const streetId of segment.streetIds || []) {
+        const current = streetBoundsById.get(streetId);
+        if (!current) {
+          streetBoundsById.set(streetId, segmentBounds);
+        } else {
+          current.extend(segmentBounds);
+        }
+      }
+
+      return true;
+    };
+
+    const renderSegments = (segments12, segmentsB1) => {
+      layer12.clearLayers();
+      layerB1.clearLayers();
+      streetBoundsById.clear();
+
+      for (const segment of segments12 || []) {
+        renderSegment(segment, layer12);
+      }
+
+      for (const segment of segmentsB1 || []) {
+        renderSegment(segment, layerB1);
+      }
+    };
+
+    const fitMapToVisibleStreets = () => {
+      const allBounds = L.latLngBounds([]);
+      if (layer12.getLayers().length > 0) {
+        allBounds.extend(layer12.getBounds());
+      }
+      if (layerB1.getLayers().length > 0) {
+        allBounds.extend(layerB1.getBounds());
+      }
+
+      if (allBounds.isValid()) {
+        map.fitBounds(allBounds.pad(0.08), { maxZoom: 15 });
+      }
+    };
+
+    const loadOfflineFile = () => {
+      const embedded = normalizeStoredPayload(window.BELGRADE_OFFLINE_DATA);
+      return embedded || null;
+    };
+
+    const loadMapData = async () => {
+      renderStreetList();
+      bindListEvents();
+
+      const overlays = {
+        "Зона 1.2 (синий)": layer12,
+        "Зона Б.1 (зелёный)": layerB1,
+      };
+      L.control.layers({}, overlays, { collapsed: false }).addTo(map);
+
+      try {
+        const offlineFileData = loadOfflineFile();
+        if (!offlineFileData) {
+          throw new Error("Offline file missing or empty");
+        }
+        renderSegments(offlineFileData.segments12, offlineFileData.segmentsB1);
+        fitMapToVisibleStreets();
+      } catch (error) {
+        console.error(error);
+      }
+    };
+
+    loadMapData();
+  </script>
+</body>
+</html>
