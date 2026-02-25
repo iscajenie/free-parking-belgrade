@@ -51,7 +51,7 @@
 
     h1 {
       font-size: 1.2rem;
-      margin: 0;
+      margin: 0 0 16px;
       line-height: 1.28;
     }
 
@@ -94,6 +94,10 @@
 
     .street-item:last-child {
       border-bottom: none;
+    }
+
+    .street-item.selected {
+      background: #fff3f2;
     }
 
     .street-item:hover .street-lat {
@@ -200,18 +204,65 @@
       display: block;
     }
 
+    .mobile-location-btn {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #ffffff;
+      color: #1d4259;
+      font-size: 0.88rem;
+      font-weight: 700;
+      padding: 9px 10px;
+      cursor: pointer;
+    }
+
+    .mobile-location-btn svg {
+      width: 14px;
+      height: 14px;
+      fill: #1976d2;
+      display: block;
+    }
+
     @media (max-width: 980px) {
+      html,
+      body {
+        height: 100dvh;
+      }
+
       .app {
+        height: 100dvh;
         grid-template-columns: 1fr;
-        grid-template-rows: minmax(320px, 48vh) minmax(0, 1fr);
+        grid-template-rows: auto minmax(0, 1fr);
+        gap: 0;
+        padding: 0;
       }
 
       aside {
-        order: 2;
+        order: 1;
+        border-radius: 0;
+        border-top: none;
+        border-left: none;
+        border-right: none;
+        box-shadow: none;
+        padding: 14px;
       }
 
       main {
-        order: 1;
+        order: 2;
+        border-radius: 0;
+        border: none;
+        box-shadow: none;
+      }
+
+      #map {
+        min-height: 0;
+      }
+
+      .mobile-location-btn {
+        display: inline-flex;
       }
     }
   </style>
@@ -222,6 +273,10 @@
       <h1>Free Parking</h1>
       <div class="controls">
         <input id="streetFilter" type="search" placeholder="Поиск по названию улицы" />
+        <button id="mobileLocationBtn" class="mobile-location-btn" type="button" aria-label="Location">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 2h2v3.06A7.002 7.002 0 0 1 18.94 11H22v2h-3.06A7.002 7.002 0 0 1 13 18.94V22h-2v-3.06A7.002 7.002 0 0 1 5.06 13H2v-2h3.06A7.002 7.002 0 0 1 11 5.06V2Zm1 5a5 5 0 1 0 0 10 5 5 0 0 0 0-10Zm0 3a2 2 0 1 1 0 4 2 2 0 0 1 0-4Z"/></svg>
+          <span>Location</span>
+        </button>
       </div>
       <ul class="street-list" id="streetList"></ul>
     </aside>
@@ -323,6 +378,7 @@
 
     const streetListEl = document.getElementById("streetList");
     const streetFilterEl = document.getElementById("streetFilter");
+    const mobileLocationBtn = document.getElementById("mobileLocationBtn");
 
     const map = L.map("map", {
       zoomControl: true,
@@ -340,6 +396,8 @@
 
     const layer12 = L.featureGroup().addTo(map);
     const layerB1 = L.featureGroup().addTo(map);
+    const streetPolylines = [];
+    let selectedStreetId = null;
     let userLocationDot = null;
     let userAccuracyCircle = null;
 
@@ -533,8 +591,9 @@
       streetListEl.innerHTML = filtered
         .map((street) => {
           const isBlue = street.zone === "1.2";
+          const isSelected = selectedStreetId === street.id;
           return `
-            <li class="street-item" data-street-id="${street.id}">
+            <li class="street-item${isSelected ? " selected" : ""}" data-street-id="${street.id}">
               <div class="street-head">
                 <span class="pill ${isBlue ? "blue" : "green"}">${street.zone}</span>
                 <p class="street-cyr">${street.nameCyr}</p>
@@ -547,12 +606,43 @@
         .join("");
     };
 
+    const streetIdsContain = (streetIds, streetId) => {
+      if (!Array.isArray(streetIds)) return false;
+      return streetIds.some((id) => Number(id) === streetId);
+    };
+
+    const applySelectedStreetStyle = () => {
+      for (const item of streetPolylines) {
+        const baseStyle = zoneStyles[item.zone];
+        if (!baseStyle) continue;
+
+        const isSelected =
+          selectedStreetId !== null && streetIdsContain(item.streetIds, selectedStreetId);
+
+        item.polyline.setStyle({
+          color: isSelected ? "#e53935" : baseStyle.color,
+          weight: isSelected ? baseStyle.weight + 1 : baseStyle.weight,
+          opacity: isSelected ? 0.95 : baseStyle.opacity,
+        });
+      }
+    };
+
+    const selectStreet = (streetId) => {
+      selectedStreetId = streetId;
+      applySelectedStreetStyle();
+      const items = streetListEl.querySelectorAll(".street-item");
+      for (const item of items) {
+        item.classList.toggle("selected", Number(item.dataset.streetId) === streetId);
+      }
+    };
+
     const bindListEvents = () => {
       streetListEl.addEventListener("click", (event) => {
         const item = event.target.closest(".street-item");
         if (!item) return;
 
         const streetId = Number(item.dataset.streetId);
+        selectStreet(streetId);
         const bounds = streetBoundsById.get(streetId);
 
         if (bounds && bounds.isValid()) {
@@ -562,6 +652,10 @@
 
       streetFilterEl.addEventListener("input", (event) => {
         renderStreetList(event.target.value || "");
+      });
+
+      mobileLocationBtn.addEventListener("click", () => {
+        requestCurrentLocation();
       });
     };
 
@@ -588,6 +682,11 @@
         lineJoin: "round",
         lineCap: "round",
       }).addTo(zoneLayer);
+      streetPolylines.push({
+        polyline,
+        zone: segment.zone,
+        streetIds: Array.isArray(segment.streetIds) ? segment.streetIds : [],
+      });
 
       polyline.bindPopup(popupHtml(segment.name, segment.zone, segment.notes));
 
@@ -608,6 +707,7 @@
       layer12.clearLayers();
       layerB1.clearLayers();
       streetBoundsById.clear();
+      streetPolylines.length = 0;
 
       for (const segment of segments12 || []) {
         renderSegment(segment, layer12);
@@ -616,6 +716,8 @@
       for (const segment of segmentsB1 || []) {
         renderSegment(segment, layerB1);
       }
+
+      applySelectedStreetStyle();
     };
 
     const fitMapToVisibleStreets = () => {
@@ -640,12 +742,6 @@
     const loadMapData = async () => {
       renderStreetList();
       bindListEvents();
-
-      const overlays = {
-        "Зона 1.2 (синий)": layer12,
-        "Зона Б.1 (зелёный)": layerB1,
-      };
-      L.control.layers({}, overlays, { collapsed: false }).addTo(map);
 
       try {
         const offlineFileData = loadOfflineFile();
